@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Shower Champion Timer</title>
+
+<!-- Kid-friendly fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --fg:#0f172a;
+    --bg-grad: radial-gradient(1400px 900px at 20% 20%, #e0f2fe 0%, #f0f9ff 40%, #ffffff 80%);
+    --card:#ffffff;
+    --muted:#e2e8f0;
+    --accent:#3b82f6;
+    --shadow:0 12px 30px rgba(2,8,23,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  /* Fullscreen body that respects iOS dynamic viewport and safe areas */
+  body{
+    margin:0;
+    color:var(--fg);
+    background: var(--bg-grad);
+    font-family: "Quicksand", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    /* Fill the screen in Safari, Chrome, and PWA */
+    min-height: 100svh;
+    min-height: 100dvh;
+    min-height: 100vh; /* fallback */
+    height: 100%;
+    overflow: hidden; /* prevent rubber banding behind the app */
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  /* App fills the entire viewport including safe areas */
+  .app{
+    position: relative;
+    width:100%;
+    height: calc(var(--vh, 1vh) * 100);
+    min-height: 100svh;
+    min-height: 100dvh;
+    min-height: 100vh;
+    background:transparent;
+    /* Remove card chrome so it is truly full bleed */
+    border:0;
+    border-radius:0;
+    box-shadow:none;
+    /* Responsive padding that also accounts for safe areas */
+    --pad: clamp(12px, 2.2vmin, 24px);
+    padding: calc(var(--pad) + env(safe-area-inset-top)) calc(var(--pad) + env(safe-area-inset-right)) calc(var(--pad) + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left));
+
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+  }
+
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    min-height: 0;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+  .logo{
+    width:44px; height:44px; border-radius:14px; background:linear-gradient(135deg, #60a5fa, #f472b6);
+    display:grid; place-items:center; color:white; font-size:26px; box-shadow:0 6px 18px rgba(99,102,241,.35);
+    flex: 0 0 auto;
+  }
+  h1{
+    margin:0;
+    font-family:"Baloo 2", system-ui, sans-serif;
+    font-weight:800;
+    font-size: clamp(22px, 3.2vw, 34px);
+    letter-spacing:.2px;
+    white-space:nowrap;
+  }
+  .tagline{ margin:2px 0 0 0; color:#475569; font-size: clamp(12px, 1.7vw, 16px); }
+
+  .statusGrid{
+    /* Take all remaining height below header */
+    flex:1;
+    min-height:0; /* allow children to shrink */
+    display:grid;
+    gap:14px;
+    grid-template-rows: auto 1fr; /* timer card sizes to content, steps card fills */
+    align-items:stretch;
+  }
+
+  /* In landscape, lay out side by side */
+  @media (orientation: landscape) and (min-width: 700px){
+    .statusGrid{
+      grid-template-rows: 1fr;
+      grid-template-columns: 1.1fr .9fr;
+    }
+  }
+
+  .statusCard{
+    background:linear-gradient(180deg, #fff, #f8fbff);
+    border:1px solid var(--muted);
+    border-radius:20px;
+    padding:16px;
+    min-height:0; /* important for overflow within */
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+
+  .stepTitle{
+    font-family:"Baloo 2", system-ui, sans-serif;
+    font-size: clamp(20px, 3.6vw, 28px);
+    font-weight:800;
+    display:flex; align-items:center; gap:10px;
+    min-width:0;
+  }
+  .stepEmoji{ font-size: clamp(24px, 4vw, 34px); }
+
+  .timeBig{ font-variant-numeric: tabular-nums; font-size: clamp(26px, 6vw, 46px); font-weight:800; flex: 0 0 auto; }
+
+  .bar{ height:18px; background:#edf2f7; border-radius:999px; overflow:hidden; position:relative; border:1px solid #e2e8f0; }
+  .bar .fill{
+    height:100%; width:0%; background: var(--accent);
+    background-image: linear-gradient(45deg, rgba(255,255,255,.35) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.35) 50%, rgba(255,255,255,.35) 75%, transparent 75%, transparent);
+    background-size: 28px 28px; animation: move 1.2s linear infinite; transition: width .2s linear;
+  }
+  @keyframes move { from { background-position:0 0; } to { background-position:28px 0; } }
+
+  .overall{ display:flex; flex-direction:column; gap:8px; }
+
+  .controls{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  button{
+    appearance:none; border:2px solid var(--muted); background:#fff; border-radius:16px; padding:12px 18px;
+    font-weight:800; font-size: clamp(16px, 2.6vw, 18px); cursor:pointer; min-width:120px; box-shadow:0 6px 14px rgba(2,8,23,.06);
+    transition: transform .06s ease; touch-action: manipulation;
+  }
+  button:active{ transform: translateY(1px) scale(.99); }
+  button.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled{ opacity:.55; cursor:not-allowed; }
+
+  .chips{
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap:10px;
+    margin-top:4px;
+    overflow:auto; /* scroll within steps if needed */
+    -webkit-overflow-scrolling: touch;
+    padding-right:2px;
+  }
+  .chip{ border:1px solid var(--muted); border-radius:16px; padding:10px 12px; background:#fff; display:flex; align-items:center; gap:10px; min-height:56px; }
+  .chip.active{ outline:3px solid var(--accent); }
+  .chip .emoji{ font-size:22px; }
+  .chip .meta{ display:flex; flex-direction:column; line-height:1.1; }
+  .chip .name{ font-weight:800; font-size:14px; }
+  .chip .dur{ font-size:12px; color:#475569; }
+
+  .fineprint{ text-align:center; color:#6b7280; font-size:12px; }
+</style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true">🚿</div>
+        <div>
+          <h1>Shower Champion</h1>
+          <div class="tagline">Finish a great shower in 10 minutes</div>
+        </div>
+      </div>
+      <div class="timeBig" id="overallLeft">10:00</div>
+    </header>
+
+    <div class="statusGrid">
+      <section class="statusCard">
+        <div class="row">
+          <div class="stepTitle">
+            <span class="stepEmoji" id="stepEmoji">🙂</span>
+            <span id="step">Tap Start to begin</span>
+          </div>
+          <div class="timeBig" id="timeLeft">00:00</div>
+        </div>
+        <div class="bar" aria-label="Step progress"><div class="fill" id="stepBar"></div></div>
+
+        <div class="overall" style="margin-top:14px;">
+          <div class="row">
+            <div>Overall progress</div>
+            <div style="font-variant-numeric: tabular-nums;" id="overallPct">0%</div>
+          </div>
+          <div class="bar" aria-label="Overall progress"><div class="fill" id="overallBar"></div></div>
+        </div>
+
+        <div class="controls" style="margin-top:14px;">
+          <button class="primary" id="startBtn" onclick="start()">Start</button>
+          <button id="pauseBtn" onclick="pause()" disabled>Pause</button>
+          <button id="resetBtn" onclick="resetTimer()" disabled>Reset</button>
+        </div>
+      </section>
+
+      <section class="statusCard">
+        <div style="font-weight:800; font-size:18px; margin-bottom:8px;">Steps</div>
+        <div class="chips" id="stepList"></div>
+        <div class="fineprint" style="margin-top:8px;">Tip: turn up volume for fun sounds each step</div>
+      </section>
+    </div>
+  </div>
+
+<script>
+/* Dynamic viewport fix for iOS Safari address bar */
+function setVhVar(){
+  var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
+  document.documentElement.style.setProperty('--vh', vh + 'px');
+}
+setVhVar();
+window.addEventListener('resize', setVhVar);
+window.addEventListener('orientationchange', setVhVar);
+
+/* Timing model */
+var TOTAL_SECONDS = 10 * 60; // 600
+var WARM_SECONDS  = 2 * 60;  // 120
+var ENJOY_SECONDS = 2 * 60;  // 120
+var CORE_SECONDS  = TOTAL_SECONDS - WARM_SECONDS - ENJOY_SECONDS; // 360
+
+var coreSteps = [
+  { name: "Wet Hair", weight: 5 },
+  { name: "Shampoo", weight: 10 },
+  { name: "Rinse Hair", weight: 8 },
+  { name: "Conditioner", weight: 10 },
+  { name: "Rinse Conditioner", weight: 8 },
+  { name: "Wash Body", weight: 15 },
+  { name: "Final Rinse", weight: 10 }
+];
+var weightSum = coreSteps.reduce(function(s, x){ return s + x.weight; }, 0);
+var scaledCore = coreSteps.map(function(cs){ return { name: cs.name, time: Math.round(cs.weight / weightSum * CORE_SECONDS) }; });
+var drift = CORE_SECONDS - scaledCore.reduce(function(s, x){ return s + x.time; }, 0);
+scaledCore[scaledCore.length - 1].time += drift;
+
+var steps = [{ name: "Warm Up", time: WARM_SECONDS }].concat(scaledCore, [{ name: "Enjoy", time: ENJOY_SECONDS }]);
+
+/* Labels, emojis, colors */
+var stepMeta = {
+  "Warm Up":           { label: "Warm up the water", emoji: "🔥", color:"#f59e0b" },
+  "Wet Hair":          { label: "Soak hair",         emoji: "💦", color:"#38bdf8" },
+  "Shampoo":           { label: "Bubble shampoo",    emoji: "🫧", color:"#f472b6" },
+  "Rinse Hair":        { label: "Rinse bubbles",     emoji: "💧", color:"#60a5fa" },
+  "Conditioner":       { label: "Smooth conditioner",emoji: "✨", color:"#a78bfa" },
+  "Rinse Conditioner": { label: "Rinse smooth",      emoji: "💧✨", color:"#818cf8" },
+  "Wash Body":         { label: "Scrub body",        emoji: "🧼", color:"#34d399" },
+  "Final Rinse":       { label: "Final rinse",       emoji: "🚿", color:"#06b6d4" },
+  "Enjoy":             { label: "Enjoy time",        emoji: "🎶", color:"#f59e0b" }
+};
+
+/* DOM refs */
+var stepEl        = document.getElementById('step');
+var stepEmojiEl   = document.getElementById('stepEmoji');
+var timeLeftEl    = document.getElementById('timeLeft');
+var stepBar       = document.getElementById('stepBar');
+var overallLeftEl = document.getElementById('overallLeft');
+var overallPctEl  = document.getElementById('overallPct');
+var overallBar    = document.getElementById('overallBar');
+var stepListEl    = document.getElementById('stepList');
+var startBtn      = document.getElementById('startBtn');
+var pauseBtn      = document.getElementById('pauseBtn');
+var resetBtn      = document.getElementById('resetBtn');
+
+function formatMMSS(s){
+  var m = Math.floor(s/60);
+  var sec = s % 60;
+  return String(m).padStart(1,'0') + ":" + String(sec).padStart(2,'0');
+}
+
+/* Render step chips */
+function renderStepList(activeIdx){
+  stepListEl.innerHTML = '';
+  steps.forEach(function(st, i){
+    var meta = stepMeta[st.name] || { label: st.name, emoji:"🙂", color:"#3b82f6" };
+    var div = document.createElement('div');
+    div.className = 'chip' + (i===activeIdx ? ' active' : '');
+    if (i===activeIdx) div.style.outlineColor = meta.color;
+    div.innerHTML = '<div class="emoji" aria-hidden="true">'+meta.emoji+'</div>' +
+                    '<div class="meta">' +
+                      '<div class="name">'+meta.label+'</div>' +
+                      '<div class="dur">'+formatMMSS(st.time)+'</div>' +
+                    '</div>';
+    stepListEl.appendChild(div);
+  });
+}
+
+/* State */
+var currentStep = -1;
+var timeLeft = 0;
+var overallElapsed = 0;
+var intervalId = null;
+
+/* Web Audio */
+var actx = null;
+function ensureAudio(){
+  if (!actx) {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (actx && actx.state === 'suspended') { actx.resume(); }
+}
+function playTone(freq, dur, type, gain){
+  if (!actx) return;
+  freq = freq || 440; dur = dur || 0.2; type = type || 'sine'; gain = gain || 0.12;
+  var t0 = actx.currentTime + 0.02;
+  var osc = actx.createOscillator();
+  var g = actx.createGain();
+  osc.type = type; osc.frequency.value = freq;
+  g.gain.value = gain;
+  osc.connect(g); g.connect(actx.destination);
+  osc.start(t0);
+  g.gain.setTargetAtTime(0, t0 + dur*0.7, dur*0.3);
+  osc.stop(t0 + dur + 0.05);
+}
+function playSeq(seq, gap){
+  if (!actx) return;
+  gap = gap || 0.05;
+  var t = actx.currentTime + 0.02;
+  var master = actx.createGain();
+  master.gain.value = 0.12;
+  master.connect(actx.destination);
+  seq.forEach(function(s){
+    var osc = actx.createOscillator();
+    var g = actx.createGain();
+    osc.type = s.type || 'sine';
+    osc.frequency.value = s.freq;
+    g.gain.value = (s.gain != null ? s.gain : 1.0);
+    osc.connect(g); g.connect(master);
+    var dur = (s.dur != null ? s.dur : 0.2);
+    osc.start(t);
+    g.gain.setTargetAtTime(0, t + Math.max(0.05, dur*0.75), 0.08);
+    osc.stop(t + dur + 0.02);
+    t += dur + gap;
+  });
+}
+function playWaterNoise(dur){
+  dur = dur || 0.35;
+  if (!actx) return;
+  var sr = actx.sampleRate;
+  var len = Math.floor(sr * dur);
+  var buffer = actx.createBuffer(1, len, sr);
+  var data = buffer.getChannelData(0);
+  for (var i=0;i<len;i++){ data[i] = (Math.random()*2-1) * (1 - i/len); }
+  var src = actx.createBufferSource();
+  src.buffer = buffer;
+  var biquad = actx.createBiquadFilter();
+  biquad.type = 'bandpass';
+  biquad.frequency.value = 1000;
+  biquad.Q.value = 0.8;
+  var g = actx.createGain();
+  g.gain.value = 0.14;
+  src.connect(biquad); biquad.connect(g); g.connect(actx.destination);
+  src.start();
+}
+function playStepSound(idx){
+  ensureAudio();
+  switch(idx){
+    case 0: playSeq([{freq:440,dur:.18},{freq:660,dur:.18},{freq:880,dur:.24,type:'triangle'}], .05); break;
+    case 1: playWaterNoise(.5); break;
+    case 2: playSeq([{freq:523,dur:.16},{freq:659,dur:.16},{freq:784,dur:.22,type:'triangle'}], .06); break;
+    case 3: playSeq([{freq:740,dur:.16},{freq:587,dur:.24,type:'sawtooth'}], .05); break;
+    case 4: playSeq([{freq:494,dur:.2},{freq:659,dur:.22}], .05); break;
+    case 5: playSeq([{freq:880,dur:.12,type:'triangle'},{freq:988,dur:.12,type:'triangle'},{freq:1046,dur:.18}], .05); break;
+    case 6: playSeq([{freq:392,dur:.12,type:'square'},{freq:392,dur:.12,type:'square'},{freq:440,dur:.16,type:'square'},{freq:392,dur:.16,type:'square'}], .05); break;
+    case 7: playSeq([{freq:740,dur:.18,type:'triangle'},{freq:554,dur:.26}], .06); break;
+    case 8: playSeq([{freq:523,dur:.14},{freq:659,dur:.14},{freq:784,dur:.14},{freq:880,dur:.18,type:'triangle'},{freq:988,dur:.22}], .05); break;
+    default: playTone();
+  }
+}
+
+/* Engine */
+var paused = false;
+function setAccent(color){ document.documentElement.style.setProperty('--accent', color || '#3b82f6'); }
+function updateDisplay(){
+  var st = steps[currentStep] || { name:'Ready', time:0 };
+  var meta = stepMeta[st.name] || { label: st.name, emoji:"🙂", color:"#3b82f6" };
+
+  stepEl.textContent = meta.label;
+  stepEmojiEl.textContent = meta.emoji;
+  setAccent(meta.color);
+
+  timeLeftEl.textContent = formatMMSS(Math.max(timeLeft, 0));
+
+  var stepDur = steps[currentStep] ? Math.max(steps[currentStep].time, 1) : 1;
+  var stepDone = 1 - Math.max(timeLeft, 0) / stepDur;
+  stepBar.style.width = Math.min(100, Math.max(0, stepDone*100)) + '%';
+
+  var overallDone = Math.min(1, overallElapsed / TOTAL_SECONDS);
+  overallBar.style.width = (overallDone*100) + '%';
+  overallPctEl.textContent = Math.round(overallDone*100) + '%';
+  var overallLeft = Math.max(TOTAL_SECONDS - overallElapsed, 0);
+  overallLeftEl.textContent = formatMMSS(overallLeft);
+
+  renderStepList(currentStep);
+}
+function advanceStep(){
+  currentStep++;
+  if (currentStep >= steps.length){
+    clearInterval(intervalId);
+    intervalId = null;
+    stepEl.textContent = 'All done';
+    stepEmojiEl.textContent = '🏆';
+    timeLeftEl.textContent = '00:00';
+    stepBar.style.width = '100%';
+    overallBar.style.width = '100%';
+    overallPctEl.textContent = '100%';
+    overallLeftEl.textContent = '00:00';
+    renderStepList(-1);
+    startBtn.disabled = true;
+    pauseBtn.disabled = true;
+    ensureAudio();
+    playSeq([{freq:659,dur:.16},{freq:784,dur:.18},{freq:988,dur:.22,type:'triangle'}], .06);
+    setTimeout(function(){ playSeq([{freq:988,dur:.16},{freq:1175,dur:.18},{freq:1319,dur:.26,type:'triangle'}], .06); }, 250);
+    return;
+  }
+  timeLeft = steps[currentStep].time;
+  playStepSound(currentStep);
+}
+function tick(isStart){
+  if (isStart || timeLeft <= 0){ advanceStep(); }
+  if (currentStep >= steps.length) return;
+  updateDisplay();
+  timeLeft--;
+  overallElapsed++;
+}
+
+/* Controls */
+function start(){
+  if (intervalId) return;
+  ensureAudio();
+  paused = false;
+  startBtn.disabled = true;
+  pauseBtn.disabled = false;
+  resetBtn.disabled = false;
+  if (currentStep < 0){ currentStep = 0; timeLeft = steps[0].time; }
+  tick(true);
+  intervalId = setInterval(function(){ tick(false); }, 1000);
+}
+function pause(){
+  if (!intervalId) return;
+  clearInterval(intervalId);
+  intervalId = null;
+  paused = true;
+  startBtn.disabled = false;
+  pauseBtn.disabled = true;
+}
+function resetTimer(){
+  clearInterval(intervalId);
+  intervalId = null;
+  currentStep = -1;
+  timeLeft = 0;
+  overallElapsed = 0;
+  paused = false;
+  startBtn.disabled = false;
+  pauseBtn.disabled = true;
+  resetBtn.disabled = true;
+  setAccent('#3b82f6');
+  updateDisplay();
+}
+
+/* Robust event wiring */
+window.addEventListener('DOMContentLoaded', function(){
+  startBtn.addEventListener('click', start);
+  pauseBtn.addEventListener('click', pause);
+  resetBtn.addEventListener('click', resetTimer);
+  renderStepList(-1);
+  updateDisplay();
+});
+</script>
+</body>
+</html>
