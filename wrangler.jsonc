@@ -1,0 +1,8 @@
+{
+  "name": "super-cake-b21b",
+  "compatibility_date": "2025-08-10",
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash"
+  }
+}
